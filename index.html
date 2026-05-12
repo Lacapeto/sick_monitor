@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ABU Sick Bay – Smart Vital Signs Management System</title>
+<link rel="stylesheet" href="black.css">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+    </svg>
+    ABU Sick Bay — Smart Vital Signs Monitor
+  </div>
+  <div class="topbar-right">
+    <div class="status-pill"><span class="dot"></span><span id="dbStatus">Connecting...</span></div>
+    <div class="time-display" id="clockDisplay">--:--:--</div>
+  </div>
+</div>
+
+<!-- NAVIGATION -->
+<div class="nav">
+  <div class="tab active" onclick="showPage('dashboard',this)">📊 Dashboard</div>
+  <div class="tab" onclick="showPage('patients',this)">👥 Patients</div>
+  <div class="tab" onclick="showPage('register',this)">➕ Register Student</div>
+  <div class="tab" onclick="showPage('history',this)">📋 Vital History</div>
+  <div class="tab" onclick="showPage('alerts',this)">🔔 Alerts <span id="alertCount" style="background:#dc2626;color:#fff;border-radius:10px;padding:1px 6px;font-size:.7rem;margin-left:4px">0</span></div>
+  <div class="tab" onclick="showPage('simulation',this)">🔌 Simulation</div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- PAGES (same structure as original, just with IDs for all form elements) -->
+<div class="container">
+  <!-- Dashboard Page -->
+  <div id="page-dashboard" class="page active">
+    <!-- Alert Banner -->
+    <div id="alertBanner" class="hidden">
+      <div class="alert-icon">🚨</div>
+      <div class="alert-msg">
+        <div class="alert-title" id="alertTitle">CRITICAL VITAL SIGNS DETECTED</div>
+        <div class="alert-detail" id="alertDetail">Patient requires immediate attention</div>
+      </div>
+      <button class="dismiss-btn" onclick="dismissAlert()">Dismiss</button>
+    </div>
+
+    <!-- Stat cards (same as original) -->
+    <div class="g4" style="margin-bottom:16px">
+      <div class="stat hr">
+        <div class="stat-label">Heart Rate</div>
+        <div class="stat-value" id="hrVal">--</div>
+        <div class="stat-unit">BPM</div>
+        <div class="stat-badge badge-ok" id="hrBadge">Normal</div>
+      </div>
+      <div class="stat temp">
+        <div class="stat-label">Body Temperature</div>
+        <div class="stat-value" id="tempVal">--</div>
+        <div class="stat-unit">°C</div>
+        <div class="stat-badge badge-ok" id="tempBadge">Normal</div>
+      </div>
+      <div class="stat sbp">
+        <div class="stat-label">Systolic BP</div>
+        <div class="stat-value" id="sbpVal">--</div>
+        <div class="stat-unit">mmHg</div>
+        <div class="stat-badge badge-ok" id="sbpBadge">Normal</div>
+      </div>
+      <div class="stat dbp">
+        <div class="stat-label">Diastolic BP</div>
+        <div class="stat-value" id="dbpVal">--</div>
+        <div class="stat-unit">mmHg</div>
+        <div class="stat-badge badge-ok" id="dbpBadge">Normal</div>
+      </div>
+    </div>
+
+    <!-- Charts + Active Patients (same as original) -->
+    <div class="g2" style="margin-bottom:16px">
+      <div class="card">
+        <div class="card-title">Heart Rate Trend (last 20 readings)</div>
+        <div class="chart-wrap"><canvas id="hrChart" class="spark"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Blood Pressure Trend</div>
+        <div class="chart-wrap"><canvas id="bpChart" class="spark"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Summary + Log (same as original) -->
+    <div class="g2">
+      <div class="card">
+        <div class="card-title">Current Active Patient</div>
+        <div id="activePatientCard">
+          <div class="empty-state">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            </svg>
+            <p>No active device connected</p>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="card-title">Vital Thresholds</div>
+        <div class="prog-row">
+          <div class="prog-label"><span>Heart Rate</span><span id="hrRange">50–110 BPM</span></div>
+          <div class="prog-bar"><div class="prog-fill fill-red" id="hrProg" style="width:0%"></div></div>
+        </div>
+        <div class="prog-row">
+          <div class="prog-label"><span>Temperature</span><span id="tempRange">35–38.5 °C</span></div>
+          <div class="prog-bar"><div class="prog-fill fill-orange" id="tempProg" style="width:0%"></div></div>
+        </div>
+        <div class="prog-row">
+          <div class="prog-label"><span>Systolic BP</span><span id="sbpRange">90–140 mmHg</span></div>
+          <div class="prog-bar"><div class="prog-fill fill-blue" id="sbpProg" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Real-Time Device Log</div>
+        <div id="rtLog"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Patients Page -->
+  <div id="page-patients" class="page">
+    <div class="section-header">
+      <div><div class="section-title">Registered Students</div>
+      <div class="sub-text">All students enrolled in the vital monitoring programme</div></div>
+      <button class="btn btn-primary" onclick="showPage('register',document.querySelector('.tab:nth-child(3)'))">+ Register New</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Student</th><th>Matric No.</th><th>Dept</th><th>Phone</th>
+            <th>Last HR</th><th>Last Temp</th><th>Last BP</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="patientTable">
+          <tr><td colspan="8" style="text-align:center;color:var(--sub);padding:30px">Loading patients...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Register Page (same form fields with IDs) -->
+  <div id="page-register" class="page">
+    <div class="section-header">
+      <div><div class="section-title">Register Student</div>
+      <div class="sub-text">Enrol a new student into the vital signs monitoring system</div></div>
+    </div>
+    <div class="card">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" id="reg_name" placeholder="e.g. Aminu Ibrahim Musa"/>
+        </div>
+        <div class="form-group">
+          <label>Matric Number *</label>
+          <input type="text" id="reg_matric" placeholder="e.g. ABU/ENG/2021/001"/>
+        </div>
+        <!-- ... rest of form fields exactly as original ... -->
+        <div class="form-group">
+          <label>Date of Birth</label>
+          <input type="date" id="reg_dob"/>
+        </div>
+        <div class="form-group">
+          <label>Gender</label>
+          <select id="reg_gender">
+            <option value="">Select gender</option>
+            <option>Male</option><option>Female</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Department *</label>
+          <input type="text" id="reg_dept" placeholder="e.g. Computer Engineering"/>
+        </div>
+        <div class="form-group">
+          <label>Faculty</label>
+          <input type="text" id="reg_faculty" placeholder="e.g. Engineering"/>
+        </div>
+        <div class="form-group">
+          <label>Level</label>
+          <select id="reg_level">
+            <option value="">Select level</option>
+            <option>100L</option><option>200L</option><option>300L</option>
+            <option>400L</option><option>500L</option><option>600L</option>
+            <option>Postgraduate</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Blood Group</label>
+          <select id="reg_bloodgroup">
+            <option value="">Select blood group</option>
+            <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+            <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Phone Number *</label>
+          <input type="tel" id="reg_phone" placeholder="e.g. 08012345678"/>
+        </div>
+        <div class="form-group">
+          <label>Emergency Contact Phone</label>
+          <input type="tel" id="reg_emergency" placeholder="Guardian/Parent phone"/>
+        </div>
+        <div class="form-group">
+          <label>Device ID (Wristwatch)</label>
+          <input type="text" id="reg_device" placeholder="e.g. WW-001"/>
+        </div>
+        <div class="form-group">
+          <label>Known Allergies / Conditions</label>
+          <input type="text" id="reg_conditions" placeholder="e.g. Asthma, Diabetes"/>
+        </div>
+      </div>
+      <div class="form-group mt" style="grid-column:1/-1">
+        <label>Medical Notes</label>
+        <textarea id="reg_notes" rows="3" placeholder="Additional health notes..."></textarea>
+      </div>
+      <div class="gap-row mt">
+        <button class="btn btn-success" onclick="registerStudent()">✅ Register Student</button>
+        <button class="btn" style="background:#1e2d45;color:var(--text)" onclick="clearRegForm()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- History, Alerts, Simulation pages (same as original) -->
+  <div id="page-history" class="page">
+    <div class="section-header">
+      <div><div class="section-title">Vital Signs History</div>
+      <div class="sub-text">All received readings from wristwatch devices</div></div>
+    </div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Time</th><th>Student</th><th>Device</th>
+            <th>HR (BPM)</th><th>Temp (°C)</th><th>SBP</th><th>DBP</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="historyTable">
+          <tr><td colspan="9" style="text-align:center;color:var(--sub);padding:30px">Loading history...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="page-alerts" class="page">
+    <div class="section-header">
+      <div><div class="section-title">Alert Notifications</div>
+      <div class="sub-text">Critical vital signs events requiring immediate attention</div></div>
+      <button class="btn" style="background:#1e2d45;color:var(--text)" onclick="clearAlerts()">Clear All</button>
+    </div>
+    <div id="alertsList">
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <p>Loading alerts...</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="page-simulation" class="page">
+    <!-- Simulation page content exactly as original -->
+    <div class="section-header">
+      <div><div class="section-title">Proteus Simulation Interface</div>
+      <div class="sub-text">Inject simulated wristwatch data to test the system end-to-end</div></div>
+    </div>
+    <div class="g2">
+      <div class="card">
+        <div class="card-title">Inject Simulated Vital Reading</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Device ID</label>
+            <input type="text" id="sim_device" value="WW-001"/>
+          </div>
+          <div class="form-group">
+            <label>Student ID</label>
+            <input type="text" id="sim_student" value="ABU/ENG/2021/001"/>
+          </div>
+          <div class="form-group">
+            <label>Heart Rate (BPM)</label>
+            <input type="number" id="sim_hr" value="75" min="20" max="250"/>
+          </div>
+          <div class="form-group">
+            <label>Body Temp (°C)</label>
+            <input type="number" id="sim_temp" value="36.5" step="0.1" min="30" max="44"/>
+          </div>
+          <div class="form-group">
+            <label>Systolic BP (mmHg)</label>
+            <input type="number" id="sim_sbp" value="120" min="60" max="200"/>
+          </div>
+          <div class="form-group">
+            <label>Diastolic BP (mmHg)</label>
+            <input type="number" id="sim_dbp" value="80" min="40" max="130"/>
+          </div>
+        </div>
+        <div class="gap-row mt">
+          <button class="btn btn-primary" onclick="injectSimReading()">📡 Send Reading</button>
+          <button class="btn" style="background:#78350f;color:#fde68a" onclick="injectCritical()">🚨 Inject Critical</button>
+          <button class="btn" style="background:#1e2d45;color:var(--text)" onclick="startAutoSim()">▶ Auto Simulate</button>
+          <button class="btn" style="background:#1e2d45;color:var(--text)" onclick="stopAutoSim()">⏹ Stop</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Simulation Log</div>
+        <div id="simLog" style="height:280px;overflow-y:auto;background:#050c14;border-radius:8px;border:1px solid var(--border);padding:12px;font-family:monospace;font-size:.78rem;color:#7dd3fc"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="black.js"></script>
+</body>
+</html>
